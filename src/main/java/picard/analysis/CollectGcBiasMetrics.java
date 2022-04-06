@@ -149,9 +149,12 @@ public class CollectGcBiasMetrics extends SinglePassSamProgram {
 
     @Override
     protected String[] customCommandLineValidation() {
+        /*
+        CEGX MODIFICATION: REMOVE CHECK FOR R
         if (!checkRInstallation(CHART_OUTPUT != null)) {
             return new String[]{"R is not installed on this machine. It is required for creating the chart."};
         }
+        */
         return super.customCommandLineValidation();
     }
 
@@ -208,11 +211,14 @@ public class CollectGcBiasMetrics extends SinglePassSamProgram {
 
         final NumberFormat fmt = NumberFormat.getIntegerInstance();
         fmt.setGroupingUsed(true);
+        /*
+        CEGX MODIFICATION: REMOVE GC BIAS PLOT GENERATION
         RExecutor.executeFromClasspath(R_SCRIPT,
                 OUTPUT.getAbsolutePath(),
                 SUMMARY_OUTPUT.getAbsolutePath(),
                 CHART_OUTPUT.getAbsolutePath().replaceAll("%", "%%"),
                 String.valueOf(SCAN_WINDOW_SIZE));
+         */
     }
 }
 
