@@ -29,6 +29,7 @@ import htsjdk.samtools.util.Histogram;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import picard.PicardException;
 import picard.cmdline.CommandLineProgramTest;
 import picard.util.TestNGUtil;
 
@@ -656,14 +657,15 @@ public class CollectAlignmentSummaryMetricsTest extends CommandLineProgramTest {
     @DataProvider
     Object[][] fileForTestReadLengthHistogram(){
         return new Object[][]{
-                new Object[]{"summary_alignment_stats_test.sam"},
-                new Object[]{"summary_alignment_stats_test2.sam"},
-                new Object[]{"summary_alignment_stats_test3.sam"}
+                {"summary_alignment_stats_test.sam", true},
+                {"summary_alignment_stats_test2.sam", true},
+                {"summary_alignment_stats_test3.sam", true},
+                {"summary_alignment_stats_test_empty.sam", false}
         };
     }
 
     @Test(dataProvider = "fileForTestReadLengthHistogram")
-    public void testReadLengthHistogram(final String fileToUse) throws IOException {
+    public void testReadLengthHistogram(final String fileToUse, final Boolean expectHistogramOut) throws IOException {
         final File input = new File(TEST_DATA_DIR, fileToUse);
         final File outFile = getTempOutputFile("testReadLengthHistogram", ".txt");
 
@@ -676,7 +678,9 @@ public class CollectAlignmentSummaryMetricsTest extends CommandLineProgramTest {
 
         Assert.assertEquals(runPicardCommandLine(argsList.toArray(new String[0])),0);
 
-        Assert.assertTrue(outHist.exists());
+        if (expectHistogramOut) {
+            Assert.assertTrue(outHist.exists());
+        }
     }
 
 
@@ -766,6 +770,39 @@ public class CollectAlignmentSummaryMetricsTest extends CommandLineProgramTest {
                     }
                 }
             }
+        }
+    }
+
+    @Test(expectedExceptions = PicardException.class)
+    public void testNoPFReads() throws IOException {
+        final File input = new File(TEST_DATA_DIR, "null.sam");
+        final File outfile = getTempOutputFile("test", ".txt");
+        final String[] args = new String[]{
+                "INPUT=" + input.getAbsolutePath(),
+                "OUTPUT=" + outfile.getAbsolutePath(),
+        };
+        Assert.assertEquals(runPicardCommandLine(args), 0);
+
+        final MetricsFile<AlignmentSummaryMetrics, Comparable<?>> output = new MetricsFile<>();
+        try (FileReader reader = new FileReader(outfile)) {
+            output.read(reader);
+        }
+
+        Assert.assertEquals(output.getMetrics().size(), 1);
+        for (final AlignmentSummaryMetrics metrics : output.getMetrics()) {
+            Assert.assertEquals(metrics.MEAN_READ_LENGTH, 0.0);
+            Assert.assertEquals(metrics.TOTAL_READS, 3);
+            Assert.assertEquals(metrics.PF_READS, 0);
+            Assert.assertEquals(metrics.PF_NOISE_READS, 0);
+            Assert.assertEquals(metrics.PF_HQ_ALIGNED_READS, 0);
+            Assert.assertEquals(metrics.PF_HQ_ALIGNED_Q20_BASES, 0);
+            Assert.assertEquals(metrics.PF_HQ_MEDIAN_MISMATCHES, 0.0);
+            Assert.assertEquals(metrics.PF_READS_ALIGNED, 0);
+            Assert.assertEquals(metrics.PF_READS_IMPROPER_PAIRS, 0);
+            Assert.assertEquals(metrics.PCT_PF_READS_IMPROPER_PAIRS, 0.0);
+            Assert.assertEquals(metrics.PF_ALIGNED_BASES, 0);
+            Assert.assertEquals(metrics.PF_MISMATCH_RATE, 0.0);
+            Assert.assertEquals(metrics.BAD_CYCLES, 0);
         }
     }
 }

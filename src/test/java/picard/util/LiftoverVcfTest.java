@@ -4,10 +4,7 @@ import htsjdk.samtools.SAMException;
 import htsjdk.samtools.liftover.LiftOver;
 import htsjdk.samtools.reference.FastaSequenceFile;
 import htsjdk.samtools.reference.ReferenceSequence;
-import htsjdk.samtools.util.CloseableIterator;
-import htsjdk.samtools.util.CollectionUtil;
-import htsjdk.samtools.util.IOUtil;
-import htsjdk.samtools.util.Interval;
+import htsjdk.samtools.util.*;
 import htsjdk.variant.variantcontext.Allele;
 import htsjdk.variant.variantcontext.Genotype;
 import htsjdk.variant.variantcontext.GenotypeBuilder;
@@ -50,7 +47,7 @@ public class LiftoverVcfTest extends CommandLineProgramTest {
     private static final File REFERENCE_FILE = new File(TEST_DATA_PATH, "dummy.reference.fasta");
     private static final File TWO_INTERVALS_REFERENCE_FILE = new File(TEST_DATA_PATH, "dummy.two.block.reference.fasta");
 
-    private static final File OUTPUT_DATA_PATH = IOUtil.createTempDir("LiftoverVcfsTest", null);
+    private static final File OUTPUT_DATA_PATH = IOUtil.createTempDir("LiftoverVcfsTest.tmp").toFile();
 
     private final int CHAIN_SIZE = 540; // the length of the single chain in CHAIN_FILE
 
@@ -58,6 +55,10 @@ public class LiftoverVcfTest extends CommandLineProgramTest {
     //                                       123456789 123456789 123456789 123
     private static final String refString = "CAAAAAAAAAACGTACGTACTCTCTCTCTACGT";
     private static final ReferenceSequence REFERENCE = new ReferenceSequence("chr1", 0, refString.getBytes());
+
+    private static final String refStringWithRepeat = "CGTCGTCGT";
+
+    private static final ReferenceSequence REFERENCE_WITH_REPEATS = new ReferenceSequence("chr1", 0, refStringWithRepeat.getBytes());
 
     public String getCommandLineProgramName() {
         return LiftoverVcf.class.getSimpleName();
@@ -174,8 +175,8 @@ public class LiftoverVcfTest extends CommandLineProgramTest {
     @Test
     public void testReverseComplementFailureDoesNotErrorOut() {
         final VariantContextBuilder builder = new VariantContextBuilder().source("test").loc("chr1", 1, 4);
-        final Allele originalRef = Allele.create("CCCC", true);
-        final Allele originalAlt = Allele.create("C", false);
+        final Allele originalRef = Allele.create("TCAT", true);
+        final Allele originalAlt = Allele.create("T", false);
         builder.alleles(Arrays.asList(originalRef, originalAlt));
 
         final Interval interval = new Interval("chr1", 1, 4, true, "test ");
@@ -185,6 +186,26 @@ public class LiftoverVcfTest extends CommandLineProgramTest {
 
         // we don't actually care what the results are here -- we just want to make sure that it doesn't fail
         final VariantContextBuilder result = LiftoverUtils.reverseComplementVariantContext(builder.make(), interval, refSeq);
+        Assert.assertNotNull(result);
+    }
+
+
+    @Test
+    public void testReverseComplementWithRepeats() {
+        final VariantContextBuilder builder = new VariantContextBuilder().source("test").loc("chr1", 3, 6);
+        final Allele originalRef = Allele.create("CATC", true);
+        final Allele originalAlt = Allele.create("C", false);
+        builder.alleles(Arrays.asList(originalRef, originalAlt));
+
+        final Interval interval = new Interval("chr1", 3, 6, true, "test ");
+
+        final String reference = "ATGATGATGA";
+        final ReferenceSequence refSeq = new ReferenceSequence("chr1", 10, reference.getBytes());
+
+        // we don't actually care what the results are here -- we just want to make sure that it doesn't fail
+        final VariantContextBuilder result = LiftoverUtils.reverseComplementVariantContext(builder.make(), interval, refSeq);
+        Assert.assertNotNull(result);
+        Assert.assertTrue(result.getStart() > 0);
     }
 
     @DataProvider(name = "dataTestMissingContigInReference")
@@ -381,6 +402,7 @@ public class LiftoverVcfTest extends CommandLineProgramTest {
         final Allele RefT = Allele.create("T", true);
         final Allele RefA = Allele.create("A", true);
         final Allele RefAC = Allele.create("AC", true);
+        final Allele RefGT = Allele.create("GT", true);
         final Allele RefC = Allele.create("C", true);
         final Allele RefG = Allele.create("G", true);
 
@@ -615,6 +637,19 @@ public class LiftoverVcfTest extends CommandLineProgramTest {
 
         builder.source("test14").start(start).stop(stop).alleles(CollectionUtil.makeList(RefACGT, A, spanningDeletion));
         result_builder.start(CHAIN_SIZE - stop).stop(CHAIN_SIZE - start).alleles(CollectionUtil.makeList(RefAACG, A, spanningDeletion));
+        genotypeBuilder.alleles(builder.getAlleles());
+        resultGenotypeBuilder.alleles(result_builder.getAlleles());
+        builder.genotypes(genotypeBuilder.make());
+        result_builder.genotypes(resultGenotypeBuilder.make());
+        tests.add(new Object[]{builder.make(), REFERENCE, result_builder.make()});
+
+        // a spanning deletion with a multibase reference (for example a multiallelic mnp which has be split), where the spanning deletion is the only alt
+        // AC, * --> GT, *
+        start = CHAIN_SIZE - 13;
+        stop = start + 1;
+
+        builder.start(start).stop(stop).alleles(CollectionUtil.makeList(RefAC, spanningDeletion));
+        result_builder.start(CHAIN_SIZE - stop + 1).stop(CHAIN_SIZE - start + 1).alleles(CollectionUtil.makeList(RefGT, spanningDeletion));
         genotypeBuilder.alleles(builder.getAlleles());
         resultGenotypeBuilder.alleles(result_builder.getAlleles());
         builder.genotypes(genotypeBuilder.make());
@@ -960,6 +995,31 @@ public class LiftoverVcfTest extends CommandLineProgramTest {
 
         VcfTestUtils.assertEquals(vcb.make(), result);
     }
+
+    @Test
+    public void testLeftAlignInRepeatingStart(){
+//         reference: CGTCGTCGT
+//                    123456789
+//        TCGT->T
+
+        final VariantContextBuilder builder = new VariantContextBuilder().source("test1").chr("chr1");
+        builder.start(3).stop(6).alleles(CollectionUtil.makeList(Allele.create("TCGT",true), Allele.create("T")));
+        GenotypeBuilder genotypeBuilder = new GenotypeBuilder();
+        genotypeBuilder.alleles(builder.getAlleles());
+        builder.genotypes(genotypeBuilder.make());
+
+        VariantContext vc = builder.make();
+        final List<Allele> origAlleles = new ArrayList<>(builder.getAlleles());
+
+//      This path mimics the codepath through the LiftoverUtils.reverseComplementVariantContext but without reverseComplementing
+        LiftoverUtils.leftAlignVariant(builder, vc.getStart(), vc.getEnd(), vc.getAlleles(), REFERENCE_WITH_REPEATS);
+        builder.genotypes(LiftoverUtils.fixGenotypes(builder.getGenotypes(), origAlleles, builder.getAlleles()));
+        VariantContext newVc = builder.make();
+        final String refString = StringUtil.bytesToString(REFERENCE_WITH_REPEATS.getBases(), newVc.getStart() - 1, newVc.getEnd() - newVc.getStart() + 1);
+
+        Assert.assertEquals(refString, "CGTC");
+    }
+
 
     @DataProvider(name = "indelNoFlipData")
     public Iterator<Object[]> indelNoFlipData() {

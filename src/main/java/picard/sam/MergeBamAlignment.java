@@ -73,6 +73,10 @@ import java.util.*;
  *      R=reference_sequence.fasta
  * </pre>
  *
+ * <h3>Note about required arguments</h3>
+ * The aligned reads must be specified using either the ALIGNED_BAM or READ1_ALIGNED_BAM and READ2_ALIGNED_BAM arguments.
+ * Without aligned reads specified in one of those manners, the tool will not run.
+ *
  *
  * <h3>Caveats</h3>
  * This tool has been developing for a while and many arguments have been added to it over the years.
@@ -127,6 +131,9 @@ public class MergeBamAlignment extends CommandLineProgram {
             "     O=merge_alignments.bam \\\n" +
             "     R=reference_sequence.fasta\n" +
             "\n" +
+            "<h3>Note about required arguments</h3>\n" +
+            " The aligned reads must be specified using either the ALIGNED_BAM or READ1_ALIGNED_BAM and READ2_ALIGNED_BAM arguments. " +
+            " Without aligned reads specified in one of those manners, the tool will not run." +
             "<h3>Caveats</h3>\n" +
             "This tool has been developing for a while and many arguments have been added to it over the years. " +
             "You may be particularly interested in the following (partial) list:\n" +
@@ -310,7 +317,7 @@ public class MergeBamAlignment extends CommandLineProgram {
                 "the alignment pair with the largest insert size. If all alignments would be chimeric, it picks the " +
                 "alignments for each end with the best MAPQ. ");
 
-        private final Class<PrimaryAlignmentSelectionStrategy> clazz;
+        private final Class<? extends PrimaryAlignmentSelectionStrategy> clazz;
 
         private final String description;
 
@@ -318,14 +325,14 @@ public class MergeBamAlignment extends CommandLineProgram {
             return description;
         }
 
-        PrimaryAlignmentStrategy(final Class<?> clazz, final String description) {
-            this.clazz = (Class<PrimaryAlignmentSelectionStrategy>) clazz;
+        PrimaryAlignmentStrategy(final Class<? extends PrimaryAlignmentSelectionStrategy> clazz, final String description) {
+            this.clazz = clazz;
             this.description = description;
         }
 
         PrimaryAlignmentSelectionStrategy newInstance() {
             try {
-                return clazz.newInstance();
+                return clazz.getDeclaredConstructor().newInstance();
             } catch (Exception e) {
                 throw new PicardException("Trouble instantiating " + clazz.getName(), e);
             }

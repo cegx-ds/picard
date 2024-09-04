@@ -3,6 +3,7 @@ package picard.sam;
 import htsjdk.samtools.SamStreams;
 import htsjdk.samtools.cram.CRAMException;
 import htsjdk.samtools.util.IOUtil;
+import htsjdk.samtools.util.RuntimeIOException;
 import org.testng.Assert;
 import org.testng.annotations.AfterTest;
 import org.testng.annotations.DataProvider;
@@ -10,6 +11,9 @@ import org.testng.annotations.Test;
 import picard.cmdline.CommandLineProgram;
 
 import java.io.*;
+import java.lang.reflect.InvocationTargetException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -24,7 +28,7 @@ public class CramCompatibilityTest {
     public static final String CRAM_FILE_QUERY_SORTED = "testdata/picard/sam/test_cram_file_query_sorted.cram";
 
     public static final String REFERENCE_FILE = "testdata/picard/sam/test_cram_file.ref.fa";
-    public static final String FASTQ_FILE = "testdata/picard/sam/fastq2bam/fastq-sanger/5k-v1-Rhodobacter_LW1.sam.fastq";
+    public static final String FASTQ_FILE = "testdata/picard/sam/fastq2bam/fastq-sanger/5k-v1-Rhodobacter_LW1.sam.fastq.gz";
 
     public static final String CRAM_UNMAPPED = "testdata/picard/sam/SamFormatConverterTest/unmapped.cram";
     public static final String CRAM_UNMAPPED_WITH_OQ_TAG = "testdata/picard/sam/unmapped_with_oq_tag.cram";
@@ -38,11 +42,11 @@ public class CramCompatibilityTest {
     public static final String MBA_UNMAPPED_CRAM = "testdata/picard/sam/MergeBamAlignment/cliptest.unmapped.cram";
     public static final String MBA_REFERENCE = "testdata/picard/sam/MergeBamAlignment/cliptest.fasta";
 
-    private static final File outputDir = IOUtil.createTempDir("testdata/picard/sam/CramCompatibilityTest", ".tmp");
+    private static final Path outputDir = IOUtil.createTempDir("CramCompatibilityTest.tmp");
 
     @AfterTest
     public void tearDown() {
-        IOUtil.recursiveDelete(outputDir.toPath());
+        IOUtil.recursiveDelete(outputDir);
     }
 
     @DataProvider(name = "programArgsForCRAMWithReference")
@@ -106,13 +110,13 @@ public class CramCompatibilityTest {
     public void testShouldWriteCRAMWhenCRAMWithReference(String program,
                                                          String parameters,
                                                          String cramFile,
-                                                         String reference) throws IOException, IllegalAccessException, InstantiationException, ClassNotFoundException {
+                                                         String reference) throws IOException {
         if (!program.equals("picard.sam.SplitSamByLibrary")) {
             final File outputFile = createTempCram(program);
             launchProgram(program, cramFile, outputFile.getAbsolutePath(), parameters, reference);
             assertCRAM(outputFile);
         } else {
-            final File tmpDir = IOUtil.createTempDir(outputDir.getAbsolutePath(), program);
+            final File tmpDir = Files.createTempDirectory(outputDir, program).toFile();
             launchProgram(program, cramFile, tmpDir.getAbsolutePath(), parameters, reference);
             assertCRAMs(tmpDir);
         }
@@ -158,13 +162,13 @@ public class CramCompatibilityTest {
     @Test(dataProvider = "programArgsForCRAMWithoutReferenceToFail", expectedExceptions = {CRAMException.class, IllegalArgumentException.class})
     public void testShouldFailWhenCRAMWithoutReference(String program,
                                                        String parameters,
-                                                       String cramFile) throws IOException, IllegalAccessException, InstantiationException, ClassNotFoundException {
+                                                       String cramFile) throws IOException {
         if (!program.equals("picard.sam.SplitSamByLibrary")) {
             final File outputFile = createTempCram(program);
             launchProgram(program, cramFile, outputFile.getAbsolutePath(), parameters, null);
             assertCRAM(outputFile);
         } else {
-            final File tmpDir = IOUtil.createTempDir(outputDir.getAbsolutePath(), program);
+            final File tmpDir = Files.createTempDirectory(outputDir, program).toFile();
             launchProgram(program, cramFile, tmpDir.getAbsolutePath(), parameters, null);
             assertCRAMs(tmpDir);
         }
@@ -208,26 +212,26 @@ public class CramCompatibilityTest {
     @Test(dataProvider = "programArgsWithUnmappedCRAM")
     public void testShouldWriteCRAMWhenUnmappedCRAMWithoutReference(String program,
                                                                     String parameters,
-                                                                    String cramFile) throws IOException, IllegalAccessException, InstantiationException, ClassNotFoundException {
+                                                                    String cramFile) throws IOException {
         if (!program.equals("picard.sam.SplitSamByLibrary")) {
             final File outputFile = createTempCram(program);
             launchProgram(program, cramFile, outputFile.getAbsolutePath(), parameters, null);
             assertCRAM(outputFile);
         } else {
-            final File tmpDir = IOUtil.createTempDir(outputDir.getAbsolutePath(), program);
+            final File tmpDir = Files.createTempDirectory(outputDir, program).toFile();
             launchProgram(program, cramFile, tmpDir.getAbsolutePath(), parameters, null);
             assertCRAMs(tmpDir);
         }
     }
 
-    private File createTempCram(String name) throws IOException {
+    private File createTempCram(String name) {
         return createTempFile(name, ".cram");
     }
 
     private static File createTempFile(String name, String extension) {
         File file = null;
         try {
-            file = File.createTempFile(name, extension, outputDir);
+            file = File.createTempFile(name, extension, outputDir.toFile());
             file.deleteOnExit();
         } catch (IOException e) {
             e.printStackTrace();
@@ -240,7 +244,7 @@ public class CramCompatibilityTest {
                                String input,
                                String output,
                                String exParams,
-                               String reference) throws ClassNotFoundException, IllegalAccessException, InstantiationException {
+                               String reference) {
         final Collection<String> args = new ArrayList<>();
 
         if (input != null) {
@@ -256,7 +260,12 @@ public class CramCompatibilityTest {
             args.add("REFERENCE_SEQUENCE=" + new File(reference).getAbsolutePath());
         }
 
-        final CommandLineProgram program = (CommandLineProgram) Class.forName(programClassname).newInstance();
+        final CommandLineProgram program;
+        try {
+            program = (CommandLineProgram) Class.forName(programClassname).getDeclaredConstructor().newInstance();
+        } catch (ReflectiveOperationException e){
+            throw new RuntimeException(e);
+        }
         program.instanceMain(args.toArray(new String[0]));
     }
 
@@ -265,7 +274,7 @@ public class CramCompatibilityTest {
         try (InputStream in = new FileInputStream(outputFile)) {
             Assert.assertTrue(SamStreams.isCRAMFile(new BufferedInputStream(in)), "File " + outputFile.getAbsolutePath() + " is not a CRAM.");
         } catch (IOException e) {
-            e.printStackTrace();
+            throw new RuntimeIOException(e);
         }
     }
 
