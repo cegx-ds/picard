@@ -15,9 +15,12 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import picard.cmdline.CommandLineProgramTest;
 import picard.cmdline.argumentcollections.RequiredReferenceArgumentCollection;
+import picard.nio.PicardHtsPath;
+import picard.nio.PicardIOUtils;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -675,16 +678,17 @@ public class AbstractAlignmentMergerTest extends CommandLineProgramTest {
 //        builder.addFrag("frag3",1,500,false,false,"20S20M60S",null, 45);
 //        builder.addFrag("frag4",1,500,true,false,"20S20M60S",null, 45);
 
-        final File file = newTempSamFile("aligned");
+        final PicardHtsPath file = PicardHtsPath.fromPath(newTempSamFile("aligned").toPath());
 
-        try (SAMFileWriter writer = new SAMFileWriterFactory().makeWriter(builder.getHeader(), true, file, null)) {
+        try (SAMFileWriter writer = new SAMFileWriterFactory().makeWriter(builder.getHeader(), true, file.toPath(), (Path) null)) {
             builder.getRecords().forEach(writer::addAlignment);
         }
 
         final RevertSam revertSam = new RevertSam();
 
         revertSam.INPUT = file;
-        final File fileUnaligned = newTempSamFile("unaligned");
+        final PicardHtsPath fileUnaligned = new PicardHtsPath(newTempSamFile("unaligned"));
+
         revertSam.OUTPUT = fileUnaligned;
 
         revertSam.SANITIZE = false;
@@ -697,13 +701,13 @@ public class AbstractAlignmentMergerTest extends CommandLineProgramTest {
 
         MergeBamAlignment mergeBamAlignment = new MergeBamAlignment();
 
-        mergeBamAlignment.ALIGNED_BAM = Collections.singletonList(file);
-        mergeBamAlignment.UNMAPPED_BAM = fileUnaligned;
+        mergeBamAlignment.ALIGNED_BAM = Collections.singletonList(file.toPath().toFile()); // TODO update to use Path when MergeBamAlignment is updated to use Path
+        mergeBamAlignment.UNMAPPED_BAM = fileUnaligned.toPath().toFile(); // Also need to be updated to use Path
         mergeBamAlignment.UNMAP_CONTAMINANT_READS = true;
 
         //yuck!
         final RequiredReferenceArgumentCollection requiredReferenceArgumentCollection = new RequiredReferenceArgumentCollection();
-        requiredReferenceArgumentCollection.REFERENCE_SEQUENCE = reference;
+        requiredReferenceArgumentCollection.REFERENCE_SEQUENCE = new PicardHtsPath(reference);
         mergeBamAlignment.referenceSequence = requiredReferenceArgumentCollection;
 
         final File fileMerged = newTempSamFile("merged");

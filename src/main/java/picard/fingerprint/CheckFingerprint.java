@@ -216,8 +216,8 @@ public class CheckFingerprint extends CommandLineProgram {
 
     private final Log log = Log.getInstance(CheckFingerprint.class);
 
-    public static final String FINGERPRINT_SUMMARY_FILE_SUFFIX = "fingerprinting_summary_metrics";
-    public static final String FINGERPRINT_DETAIL_FILE_SUFFIX = "fingerprinting_detail_metrics";
+    public static final String FINGERPRINT_SUMMARY_FILE_SUFFIX = ".fingerprinting_summary_metrics";
+    public static final String FINGERPRINT_DETAIL_FILE_SUFFIX = ".fingerprinting_detail_metrics";
 
     private Path inputPath;
     private Path genotypesPath;
@@ -229,7 +229,6 @@ public class CheckFingerprint extends CommandLineProgram {
             outputDetailMetricsFile = DETAIL_OUTPUT;
             outputSummaryMetricsFile = SUMMARY_OUTPUT;
         } else {
-            OUTPUT += ".";
             outputDetailMetricsFile = new File(OUTPUT + FINGERPRINT_DETAIL_FILE_SUFFIX);
             outputSummaryMetricsFile = new File(OUTPUT + FINGERPRINT_SUMMARY_FILE_SUFFIX);
         }
@@ -249,9 +248,16 @@ public class CheckFingerprint extends CommandLineProgram {
         final FingerprintChecker checker = new FingerprintChecker(HAPLOTYPE_MAP);
         checker.setReferenceFasta(REFERENCE_SEQUENCE);
 
-        SequenceUtil.assertSequenceDictionariesEqual(SAMSequenceDictionaryExtractor.extractDictionary(inputPath), SAMSequenceDictionaryExtractor.extractDictionary(genotypesPath), true);
-        SequenceUtil.assertSequenceDictionariesEqual(SAMSequenceDictionaryExtractor.extractDictionary(inputPath), checker.getHeader().getSequenceDictionary(), true);
-
+        try {
+            SequenceUtil.assertSequenceDictionariesEqual(SAMSequenceDictionaryExtractor.extractDictionary(inputPath), SAMSequenceDictionaryExtractor.extractDictionary(genotypesPath), true);
+        } catch (final SequenceUtil.SequenceListsDifferException e) {
+            throw new PicardException("Dictionary in " + inputPath + " does not match dictionary in " + genotypesPath, e);
+        }
+        try {
+            SequenceUtil.assertSequenceDictionariesEqual(SAMSequenceDictionaryExtractor.extractDictionary(inputPath), checker.getHeader().getSequenceDictionary(), true);
+        } catch (final SequenceUtil.SequenceListsDifferException e) {
+            throw new PicardException("Dictionary in " + inputPath + " does not match dictionary in " + HAPLOTYPE_MAP, e);
+        }
 
 
         final String observedSampleAlias = extractObservedSampleName(inputPath, OBSERVED_SAMPLE_ALIAS);

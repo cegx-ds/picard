@@ -26,12 +26,15 @@ package picard.analysis;
 
 import htsjdk.samtools.metrics.MetricsFile;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import picard.cmdline.CommandLineProgramTest;
 
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.function.Consumer;
 
 /**
  * Created by kbergin on 11/23/15.
@@ -74,4 +77,5 @@ public class CollectQualityYieldMetricsTest extends CommandLineProgramTest {
         Assert.assertEquals(metrics.PF_Q20_EQUIVALENT_YIELD, 6497);
 
     }
+
 }

@@ -23,6 +23,7 @@
  */
 package picard.util;
 
+import htsjdk.samtools.SAMSequenceDictionary;
 import htsjdk.samtools.SAMSequenceDictionaryCodec;
 import htsjdk.samtools.SAMSequenceRecord;
 import htsjdk.samtools.reference.ReferenceSequence;
@@ -32,6 +33,7 @@ import htsjdk.samtools.util.CloseableIterator;
 import htsjdk.samtools.util.IOUtil;
 import htsjdk.samtools.util.RuntimeIOException;
 import htsjdk.samtools.util.SortingCollection;
+import htsjdk.samtools.util.SequenceUtil;
 import htsjdk.samtools.util.StringUtil;
 import picard.PicardException;
 
@@ -44,6 +46,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.math.BigInteger;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Iterator;
@@ -76,7 +79,7 @@ public class SequenceDictionaryUtils {
         private ReferenceSequence nextRefSeq;
         private final MessageDigest md5;
 
-        public SamSequenceRecordsIterator(File referenceSequence, boolean truncateNamesAtWhitespace) {
+        public SamSequenceRecordsIterator(final Path referenceSequence, final boolean truncateNamesAtWhitespace) {
             this.truncateNamesAtWhitespace = truncateNamesAtWhitespace;
             this.refSeqFile = ReferenceSequenceFileFactory.
                     getReferenceSequenceFile(referenceSequence, truncateNamesAtWhitespace);
@@ -179,7 +182,7 @@ public class SequenceDictionaryUtils {
     }
 
     public static SortingCollection<String> makeSortingCollection() {
-        final File tmpDir = IOUtil.createTempDir("SamDictionaryNames", null);
+        final File tmpDir = IOUtil.createTempDir("SamDictionaryNames").toFile();
         tmpDir.deleteOnExit();
         // 256 byte for one name, and 1/10 part of all memory for this, rough estimate
         long maxNamesInRam = Runtime.getRuntime().maxMemory() / 256 / 10;
@@ -190,6 +193,30 @@ public class SequenceDictionaryUtils {
                 (int) Math.min(maxNamesInRam, Integer.MAX_VALUE),
                 tmpDir.toPath()
         );
+    }
+
+    /**
+     * Throw an exception if the two provided sequence dictionaries are not equal.
+     *
+     * @param firstDict first dictionary to compare
+     * @param firstDictSource a user-recognizable message identifying the source of the first dictionary, preferably a file path
+     * @param secondDict second dictionary to compare
+     * @param secondDictSource a user-recognizable message identifying the source of the second dictionary,  preferably a file path
+     */
+    public static void assertSequenceDictionariesEqual(
+            final SAMSequenceDictionary firstDict,
+            final String firstDictSource,
+            final SAMSequenceDictionary secondDict,
+            final String secondDictSource) {
+        try {
+            SequenceUtil.assertSequenceDictionariesEqual(firstDict, secondDict);
+        } catch (final SequenceUtil.SequenceListsDifferException e) {
+            throw new PicardException(
+                    String.format("Sequence dictionary for (%s) does not match sequence dictionary for (%s)",
+                            firstDictSource,
+                            secondDictSource),
+                    e);
+        }
     }
 
     private static class StringCodec implements SortingCollection.Codec<String> {

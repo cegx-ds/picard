@@ -26,13 +26,14 @@ package picard.analysis;
 
 import htsjdk.samtools.SAMFileHeader;
 import htsjdk.samtools.SAMRecord;
-import htsjdk.samtools.metrics.MetricBase;
 import htsjdk.samtools.metrics.MetricsFile;
 import htsjdk.samtools.reference.ReferenceSequence;
 import htsjdk.samtools.util.IOUtil;
 import org.broadinstitute.barclay.argparser.Argument;
 import org.broadinstitute.barclay.argparser.CommandLineProgramProperties;
 import org.broadinstitute.barclay.help.DocumentedFeature;
+import picard.PicardException;
+import picard.cmdline.PicardCommandLine;
 import picard.cmdline.StandardOptionDefinitions;
 import picard.cmdline.programgroups.DiagnosticsAndQCProgramGroup;
 import picard.util.help.HelpConstants;
@@ -92,6 +93,9 @@ public class CollectQualityYieldMetrics extends SinglePassSamProgram {
             "of bases if there are supplemental alignments in the input file.")
     public boolean INCLUDE_SUPPLEMENTAL_ALIGNMENTS = false;
 
+    @Argument(doc = "Obsolete. FLOW_MODE support now provided by CollectQualityYieldMetricsFlow")
+    public boolean FLOW_MODE = false;
+
     /**
      * Ensure that we get all reads regardless of alignment status.
      */
@@ -102,6 +106,9 @@ public class CollectQualityYieldMetrics extends SinglePassSamProgram {
 
     @Override
     protected void setup(final SAMFileHeader header, final File samFile) {
+        if ( FLOW_MODE ) {
+            throw new PicardException("FLOW_MODE is obsolete. Flow support now provided by CollectQualityYieldMetricsFlow");
+        }
         IOUtil.assertFileIsWritable(OUTPUT);
         this.collector = new QualityYieldMetricsCollector(USE_ORIGINAL_QUALITIES, INCLUDE_SECONDARY_ALIGNMENTS, INCLUDE_SUPPLEMENTAL_ALIGNMENTS);
     }
@@ -133,7 +140,7 @@ public class CollectQualityYieldMetrics extends SinglePassSamProgram {
         public final boolean includeSupplementalAlignments;
 
         // The metrics to be accumulated
-        private final QualityYieldMetrics metrics = new QualityYieldMetrics();
+        private final QualityYieldMetrics metrics;
 
         public QualityYieldMetricsCollector(final boolean useOriginalQualities,
                                             final boolean includeSecondaryAlignments,
@@ -141,6 +148,7 @@ public class CollectQualityYieldMetrics extends SinglePassSamProgram {
             this.useOriginalQualities = useOriginalQualities;
             this.includeSecondaryAlignments = includeSecondaryAlignments;
             this.includeSupplementalAlignments = includeSupplementalAlignments;
+            this.metrics = new QualityYieldMetrics(useOriginalQualities);
         }
 
         public void acceptRecord(final SAMRecord rec, final ReferenceSequence ref) {
@@ -192,7 +200,6 @@ public class CollectQualityYieldMetrics extends SinglePassSamProgram {
         public void finish() {
             metrics.Q20_EQUIVALENT_YIELD = metrics.Q20_EQUIVALENT_YIELD / 20;
             metrics.PF_Q20_EQUIVALENT_YIELD = metrics.PF_Q20_EQUIVALENT_YIELD / 20;
-
             metrics.calculateDerivedFields();
         }
 
@@ -207,6 +214,15 @@ public class CollectQualityYieldMetrics extends SinglePassSamProgram {
     @DocumentedFeature(groupName = HelpConstants.DOC_CAT_METRICS, summary = HelpConstants.DOC_CAT_METRICS_SUMMARY)
     public static class QualityYieldMetrics extends MergeableMetricBase {
 
+        public QualityYieldMetrics() {
+            this(false);
+        }
+
+        public QualityYieldMetrics(final boolean useOriginalQualities) {
+            super();
+            this.useOriginalQualities = useOriginalQualities;
+        }
+
         /**
          * The total number of reads in the input file
          */
@@ -220,7 +236,7 @@ public class CollectQualityYieldMetrics extends SinglePassSamProgram {
         public long PF_READS = 0;
 
         /**
-         * The average read length of all the reads (will be fixed for a lane)
+         * The average read length of all the reads
          */
         @NoMergingIsDerived
         public int READ_LENGTH = 0;
@@ -273,12 +289,26 @@ public class CollectQualityYieldMetrics extends SinglePassSamProgram {
         @MergeByAdding
         public long PF_Q20_EQUIVALENT_YIELD = 0;
 
+        @MergeByAssertEquals
+        protected final boolean useOriginalQualities;
+
         @Override
         public void calculateDerivedFields() {
             super.calculateDerivedFields();
-
             this.READ_LENGTH = this.TOTAL_READS == 0 ? 0 : (int) (this.TOTAL_BASES / this.TOTAL_READS);
         }
-    }
 
+        @Override
+        public MergeableMetricBase merge(final MergeableMetricBase other) {
+            if (!(other instanceof QualityYieldMetrics)){
+                throw new PicardException("Only objects of the same type can be merged");
+            }
+
+            final QualityYieldMetrics otherMetric = (QualityYieldMetrics) other;
+
+            super.merge(otherMetric);
+            calculateDerivedFields();
+            return this;
+        }
+    }
 }

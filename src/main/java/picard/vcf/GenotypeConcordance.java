@@ -31,7 +31,6 @@ import htsjdk.samtools.util.IOUtil;
 import htsjdk.samtools.util.IntervalList;
 import htsjdk.samtools.util.Log;
 import htsjdk.samtools.util.ProgressLogger;
-import htsjdk.samtools.util.SequenceUtil;
 import htsjdk.tribble.Tribble;
 import htsjdk.variant.variantcontext.Allele;
 import htsjdk.variant.variantcontext.Genotype;
@@ -56,6 +55,7 @@ import picard.cmdline.CommandLineProgram;
 import picard.cmdline.StandardOptionDefinitions;
 import picard.cmdline.programgroups.VariantEvaluationProgramGroup;
 import picard.nio.PicardHtsPath;
+import picard.util.SequenceDictionaryUtils;
 import picard.vcf.GenotypeConcordanceStates.CallState;
 import picard.vcf.GenotypeConcordanceStates.ContingencyState;
 import picard.vcf.GenotypeConcordanceStates.TruthAndCallStates;
@@ -71,6 +71,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -380,13 +381,21 @@ public class GenotypeConcordance extends CommandLineProgram {
         }
 
         // Verify that both VCFs have the same Sequence Dictionary
-        SequenceUtil.assertSequenceDictionariesEqual(truthReader.getFileHeader().getSequenceDictionary(), callReader.getFileHeader().getSequenceDictionary());
+        SequenceDictionaryUtils.assertSequenceDictionariesEqual(
+                truthReader.getFileHeader().getSequenceDictionary(),
+                TRUTH_VCF.getRawInputString(),
+                callReader.getFileHeader().getSequenceDictionary(),
+                CALL_VCF.getRawInputString());
 
         final Optional<VariantContextWriter> writer = getVariantContextWriter(truthReader, callReader);
 
         if (usingIntervals) {
             // If using intervals, verify that the sequence dictionaries agree with those of the VCFs
-            SequenceUtil.assertSequenceDictionariesEqual(intervalsSamSequenceDictionary, truthReader.getFileHeader().getSequenceDictionary());
+            SequenceDictionaryUtils.assertSequenceDictionariesEqual(
+                    intervalsSamSequenceDictionary,
+                    "provided intervals",
+                    truthReader.getFileHeader().getSequenceDictionary(),
+                    TRUTH_VCF.getRawInputString());
         }
 
         // Build the pair of iterators over the regions of interest
@@ -534,7 +543,7 @@ public class GenotypeConcordance extends CommandLineProgram {
             final List<Allele> callAlleles  = alleles.callAlleles();
 
             // Get the alleles present at this site for both samples to use for the output variant context, but remove no calls.
-            final Set<Allele> siteAlleles = new HashSet<>();
+            final Set<Allele> siteAlleles = new LinkedHashSet<>();
             siteAlleles.addAll(allAlleles);
             siteAlleles.remove(Allele.NO_CALL);
 

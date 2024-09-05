@@ -167,7 +167,7 @@ public class CollectSamErrorMetrics extends CommandLineProgram {
     public ReadBaseStratification.Stratifier STRATIFIER_VALUE;
 
     @Argument(shortName = "V", doc = "VCF of known variation for sample. program will skip over polymorphic sites in this VCF and " +
-            "avoid collecting data on these loci.")
+            "avoid collecting data on these loci.", optional = true)
     public String VCF;
 
     @Argument(shortName = "L", doc = "Region(s) to limit analysis to. Supported formats are VCF or interval_list. Will *intersect* inputs if multiple are given. " +
@@ -206,11 +206,16 @@ public class CollectSamErrorMetrics extends CommandLineProgram {
     @Argument(
             fullName = "INTERVAL_ITERATOR",
             doc = "Iterate through the file assuming it consists of a pre-created subset interval of the full genome.  " +
-                    "This enables fast processing of files with reads at disperate parts of the genome.  " +
+                    "This enables fast processing of files with reads at disparate parts of the genome.  " +
                     "Requires that the provided VCF file is indexed. ",
             optional = true
     )
     public boolean INTERVAL_ITERATOR = false;
+
+    @Argument(shortName = "EXT",
+            doc = "Append the given file extension to all metric file names (ex. OUTPUT.insert_size_metrics.EXT). No extension by default.",
+            optional = true)
+    public String FILE_EXTENSION = "";
 
     // =====================================================================
 
@@ -300,16 +305,18 @@ public class CollectSamErrorMetrics extends CommandLineProgram {
      * Otherwise, will initialize the {@link #vcfIterator}.
      */
     private void initializeVcfDataSource() throws IOException {
-        if ( INTERVAL_ITERATOR ) {
-            vcfFileReader = new VCFFileReader(IOUtil.getPath(VCF), false);
+        if (VCF == null) {
+            vcfIterator = new PeekableIterator<>(Collections.emptyIterator());
+        }
+        else if (INTERVAL_ITERATOR) {
+            vcfFileReader = new VCFFileReader(IOUtil.getPath(VCF), true);
             // Make sure we can query our file for interval mode:
             if (!vcfFileReader.isQueryable()) {
                 throw new PicardException("Cannot query VCF File!  VCF Files must be queryable!  Please index input VCF and re-run.");
             }
         }
         else {
-            vcfIterator = new PeekableIterator<>(
-                    VCF == null ? Collections.emptyIterator() : new VCFFileReader(IOUtil.getPath(VCF), false).iterator());
+            vcfIterator = new PeekableIterator<>(new VCFFileReader(IOUtil.getPath(VCF), true).iterator());
         }
     }
 
@@ -361,7 +368,9 @@ public class CollectSamErrorMetrics extends CommandLineProgram {
             vcfFileReader.close();
         }
         else {
-            vcfIterator.close();
+            if(vcfIterator != null) {
+                vcfIterator.close();
+            }
         }
     }
 
@@ -409,7 +418,9 @@ public class CollectSamErrorMetrics extends CommandLineProgram {
         }
         finally {
             // Close our data source:
-            closeVcfDataSource();
+            if(VCF != null) {
+                closeVcfDataSource();
+            }
         }
 
         return 0;
@@ -450,7 +461,7 @@ public class CollectSamErrorMetrics extends CommandLineProgram {
         log.info("Using " + aggregatorList.size() + " aggregators.");
 
         aggregatorList.forEach(la ->
-                IOUtil.assertFileIsWritable(new File(OUTPUT + la.getSuffix())));
+                IOUtil.assertFileIsWritable(new File(OUTPUT + la.getSuffix() + FILE_EXTENSION)));
 
         // iterate over loci
         log.info("Starting iteration over loci");
@@ -496,7 +507,9 @@ public class CollectSamErrorMetrics extends CommandLineProgram {
         // Make sure we can read our files:
         try {
             IOUtil.assertFileIsReadable(IOUtil.getPath(INPUT));
-            IOUtil.assertFileIsReadable(IOUtil.getPath(VCF));
+            if (VCF != null) {
+                IOUtil.assertFileIsReadable(IOUtil.getPath(VCF));
+            }
             IOUtil.assertFileIsReadable(REFERENCE_SEQUENCE);
             IOUtil.assertFilesAreReadable(INTERVALS);
         }
@@ -540,7 +553,7 @@ public class CollectSamErrorMetrics extends CommandLineProgram {
             }
         }
 
-        file.write(new File(OUTPUT + "." + locusAggregator.getSuffix()));
+        file.write(new File(OUTPUT + "." + locusAggregator.getSuffix() + FILE_EXTENSION));
     }
 
     /**
